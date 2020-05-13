@@ -1,5 +1,6 @@
 package agh.rozprochy.zoo;
 
+import agh.rozprochy.zoo.control.DataMonitorListener;
 import org.apache.zookeeper.AsyncCallback.StatCallback;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.KeeperException.Code;
@@ -12,17 +13,13 @@ import java.util.Arrays;
 
 public class DataMonitor implements Watcher, StatCallback {
 
-    ZooKeeper zk;
+    final private ZooKeeper zk;
+    final private String znode;
+    final private Watcher chainedWatcher;
+    final private DataMonitorListener listener;
 
-    String znode;
-
-    Watcher chainedWatcher;
-
-    boolean dead;
-
-    DataMonitorListener listener;
-
-    byte prevData[];
+    private byte[] prevData;
+    private boolean dead;
 
     public DataMonitor(ZooKeeper zk, String znode, Watcher chainedWatcher,
                        DataMonitorListener listener) {
@@ -30,32 +27,28 @@ public class DataMonitor implements Watcher, StatCallback {
         this.znode = znode;
         this.chainedWatcher = chainedWatcher;
         this.listener = listener;
-        // Get things started by checking if the node exists. We are going
-        // to be completely event driven
+
         zk.exists(znode, true, this, null);
+    }
+
+    public boolean isDead() {
+        return dead;
     }
 
     public void process(WatchedEvent event) {
         String path = event.getPath();
         if (event.getType() == Event.EventType.None) {
-            // We are are being told that the state of the
-            // connection has changed
+
             switch (event.getState()) {
                 case SyncConnected:
-                    // In this particular example we don't need to do anything
-                    // here - watches are automatically re-registered with
-                    // server and any watches triggered while the client was
-                    // disconnected will be delivered (in order of course)
                     break;
                 case Expired:
-                    // It's all over
                     dead = true;
-                    listener.closing(KeeperException.Code.SessionExpired);
+                    listener.closing(Code.SESSIONEXPIRED);
                     break;
             }
         } else {
             if (path != null && path.equals(znode)) {
-                // Something has changed on the node, let's find out
                 zk.exists(znode, true, this, null);
             }
         }
@@ -64,33 +57,30 @@ public class DataMonitor implements Watcher, StatCallback {
         }
     }
 
-    public void processResult(int rc, String path, Object ctx, Stat stat) {
+    public void processResult(int code, String path, Object ctx, Stat stat) {
         boolean exists;
-        switch (rc) {
-            case Code.Ok:
+        switch (Code.get(code)) {
+            case OK:
                 exists = true;
                 break;
-            case Code.NoNode:
+            case NONODE:
                 exists = false;
                 break;
-            case Code.SessionExpired:
-            case Code.NoAuth:
+            case SESSIONEXPIRED:
+            case NOAUTH:
                 dead = true;
-                listener.closing(rc);
+                listener.closing(Code.get(code));
                 return;
             default:
-                // Retry errors
                 zk.exists(znode, true, this, null);
                 return;
         }
 
-        byte b[] = null;
+        byte[] b = null;
         if (exists) {
             try {
                 b = zk.getData(znode, false, null);
             } catch (KeeperException e) {
-                // We don't need to worry about recovering now. The watch
-                // callbacks will kick off any exception handling
                 e.printStackTrace();
             } catch (InterruptedException e) {
                 return;

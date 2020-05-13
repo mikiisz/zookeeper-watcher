@@ -1,12 +1,13 @@
 package agh.rozprochy.zoo;
 
+import agh.rozprochy.zoo.boundary.DataMonitor;
+import agh.rozprochy.zoo.control.DataMonitorListener;
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.Collection;
 
 public class Executor implements Watcher, Runnable, DataMonitorListener {
@@ -29,7 +30,7 @@ public class Executor implements Watcher, Runnable, DataMonitorListener {
     public void run() {
         try {
             synchronized (this) {
-                while (!dm.dead) {
+                while (!dm.isDead()) {
                     wait();
                 }
             }
@@ -37,35 +38,12 @@ public class Executor implements Watcher, Runnable, DataMonitorListener {
         }
     }
 
-    public void closing(int rc) {
+    public void closing(KeeperException.Code rc) {
         synchronized (this) {
             notifyAll();
         }
     }
 
-    static class StreamWriter extends Thread {
-        OutputStream os;
-
-        InputStream is;
-
-        StreamWriter(InputStream is, OutputStream os) {
-            this.is = is;
-            this.os = os;
-            start();
-        }
-
-        public void run() {
-            byte[] b = new byte[80];
-            int rc;
-            try {
-                while ((rc = is.read(b)) > 0) {
-                    os.write(b, 0, rc);
-                }
-            } catch (IOException ignored) {
-            }
-
-        }
-    }
 
     public void exists(byte[] data) {
         if (data == null) {
