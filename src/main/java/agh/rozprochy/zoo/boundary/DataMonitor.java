@@ -1,4 +1,4 @@
-package agh.rozprochy.zoo;
+package agh.rozprochy.zoo.boundary;
 
 import agh.rozprochy.zoo.control.DataMonitorListener;
 import org.apache.zookeeper.AsyncCallback.StatCallback;
@@ -9,36 +9,61 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.data.Stat;
 
-import java.util.Arrays;
+import java.io.IOException;
+import java.util.List;
+import java.util.Scanner;
 
-public class DataMonitor implements Watcher, StatCallback {
+public class DataMonitor extends ZNodeThread implements Watcher, StatCallback {
 
     final private ZooKeeper zk;
-    final private String znode;
+    final private String zNode;
     final private Watcher chainedWatcher;
     final private DataMonitorListener listener;
 
-    private byte[] prevData;
     private boolean dead;
 
-    public DataMonitor(ZooKeeper zk, String znode, Watcher chainedWatcher,
-                       DataMonitorListener listener) {
+    public DataMonitor(ZooKeeper zk, String zNode, Watcher chainedWatcher, DataMonitorListener listener) {
         this.zk = zk;
-        this.znode = znode;
+        this.zNode = zNode;
         this.chainedWatcher = chainedWatcher;
         this.listener = listener;
 
-        zk.exists(znode, true, this, null);
+        zk.exists(zNode, true, this, null);
+
+        executor.submit(() -> {
+            final Scanner input = new Scanner(System.in);
+            while (input.hasNextLine()) {
+                if (input.nextLine().equals("ls")) {
+                    try {
+                        List<String> kids = zk.getChildren("/z", this);
+                        listAllNodes(kids, "/z");
+                        System.out.println("/z");
+                    } catch (KeeperException | InterruptedException e) {
+                        System.out.println("Node does not exists");
+                    }
+                }
+            }
+        });
     }
 
     public boolean isDead() {
         return dead;
     }
 
-    public void process(WatchedEvent event) {
-        String path = event.getPath();
-        if (event.getType() == Event.EventType.None) {
+    private void listAllNodes(List<String> kids, String parent) throws KeeperException, InterruptedException {
+        if (!kids.isEmpty()) {
+            for (String node : kids) {
+                listAllNodes(zk.getChildren(parent + "/" + node, this), parent + "/" + node);
+                System.out.println(parent + "/" + node);
+            }
+        }
+    }
 
+    @Override
+    public void process(WatchedEvent event) {
+        final String path = event.getPath();
+
+        if (event.getType() == Event.EventType.None) {
             switch (event.getState()) {
                 case SyncConnected:
                     break;
@@ -48,8 +73,8 @@ public class DataMonitor implements Watcher, StatCallback {
                     break;
             }
         } else {
-            if (path != null && path.equals(znode)) {
-                zk.exists(znode, true, this, null);
+            if (path != null && path.equals(zNode)) {
+                zk.exists(zNode, true, this, null);
             }
         }
         if (chainedWatcher != null) {
@@ -57,6 +82,7 @@ public class DataMonitor implements Watcher, StatCallback {
         }
     }
 
+    @Override
     public void processResult(int code, String path, Object ctx, Stat stat) {
         boolean exists;
         switch (Code.get(code)) {
@@ -72,24 +98,24 @@ public class DataMonitor implements Watcher, StatCallback {
                 listener.closing(Code.get(code));
                 return;
             default:
-                zk.exists(znode, true, this, null);
+                zk.exists(zNode, true, this, null);
                 return;
         }
 
         byte[] b = null;
         if (exists) {
             try {
-                b = zk.getData(znode, false, null);
+                b = zk.getData(zNode, false, null);
             } catch (KeeperException e) {
                 e.printStackTrace();
             } catch (InterruptedException e) {
                 return;
             }
         }
-        if ((b == null && b != prevData)
-                || (b != null && !Arrays.equals(prevData, b))) {
+        try {
             listener.exists(b);
-            prevData = b;
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 }
