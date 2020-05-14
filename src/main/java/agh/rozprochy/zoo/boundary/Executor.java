@@ -60,15 +60,6 @@ public class Executor extends ZNodeThread implements Watcher, Runnable, DataMoni
             }
             child = null;
         } else {
-            if (child != null) {
-                System.out.println("Stopping child");
-                child.destroy();
-                try {
-                    child.waitFor();
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
             System.out.println("Starting child");
             child = Runtime.getRuntime().exec(exec.toArray(new String[0]));
 
