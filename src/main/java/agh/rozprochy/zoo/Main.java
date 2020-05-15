@@ -1,7 +1,6 @@
 package agh.rozprochy.zoo;
 
 import agh.rozprochy.zoo.boundary.Executor;
-import org.apache.log4j.BasicConfigurator;
 
 import java.util.Collection;
 import java.util.stream.Collectors;
@@ -10,6 +9,7 @@ import java.util.stream.Stream;
 public class Main {
 
     static {
+        // Enable for logging:
 //        BasicConfigurator.configure();
     }
 
@@ -18,7 +18,7 @@ public class Main {
         String zNode = "/z";
         Collection<String> exec = Stream.of("./dummyProgram.sh").collect(Collectors.toList());
         try {
-            new Executor(hostPort, zNode, exec).run();
+            new Executor(hostPort, zNode, exec);
         } catch (Exception e) {
             e.printStackTrace();
         }
